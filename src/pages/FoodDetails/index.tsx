@@ -5,7 +5,7 @@ import React, {
   useMemo,
   useLayoutEffect,
 } from 'react';
-import { Image, Alert } from 'react-native';
+import { Image } from 'react-native';
 
 import Icon from 'react-native-vector-icons/Feather';
 import MaterialIcon from 'react-native-vector-icons/MaterialIcons';
@@ -178,34 +178,12 @@ const FoodDetails: React.FC = () => {
       const { id } = routeParams;
 
       if (newIsFavorite) {
-        const {
-          name,
-          description,
-          price,
-          category,
-          image_url,
-          thumbnail_url,
-        } = food;
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { formattedPrice: _rem1, extras: _rem2, ...foodRecord } = food;
 
-        // const test: Omit<Food, 'formattedPrice' | 'extras'> = food;
-
-        // console.log(test);
-
-        await api.post<Food>(
-          'favorites',
-          {
-            id,
-            name,
-            description,
-            price,
-            category,
-            image_url,
-            thumbnail_url,
-          },
-          {
-            cancelToken: source.token,
-          },
-        );
+        await api.post<Food>('favorites', foodRecord, {
+          cancelToken: source.token,
+        });
       } else {
         await api.delete(`favorites/${id}`, {
           cancelToken: source.token,
