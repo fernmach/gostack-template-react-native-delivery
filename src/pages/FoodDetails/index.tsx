@@ -5,7 +5,7 @@ import React, {
   useMemo,
   useLayoutEffect,
 } from 'react';
-import { Image } from 'react-native';
+import { Image, Alert } from 'react-native';
 
 import Icon from 'react-native-vector-icons/Feather';
 import MaterialIcon from 'react-native-vector-icons/MaterialIcons';
@@ -13,6 +13,8 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import formatValue from '../../utils/formatValue';
 
 import api from '../../services/api';
+
+import OverlayMessage from '../../components/OverlayMessage';
 
 import {
   Container,
@@ -56,8 +58,10 @@ interface Food {
   description: string;
   price: number;
   image_url: string;
+  thumbnail_url: string;
   formattedPrice: string;
   extras: Extra[];
+  category: number;
 }
 
 const FoodDetails: React.FC = () => {
@@ -66,45 +70,206 @@ const FoodDetails: React.FC = () => {
   const [isFavorite, setIsFavorite] = useState(false);
   const [foodQuantity, setFoodQuantity] = useState(1);
 
+  const [isMessageVisisble, setIsMessageVisisble] = useState(false);
+
   const navigation = useNavigation();
   const route = useRoute();
 
   const routeParams = route.params as Params;
 
   useEffect(() => {
+    const source = api.CancelToken.source();
+
     async function loadFood(): Promise<void> {
-      // Load a specific food with extras based on routeParams id
+      try {
+        const { id } = routeParams;
+
+        const response = await api.get<Food>(`foods/${id}`, {
+          cancelToken: source.token,
+        });
+
+        setFood({
+          ...response.data,
+          formattedPrice: formatValue(response.data.price),
+        });
+
+        setExtras(
+          response.data.extras.map((extra: Omit<Extra, 'quantity'>) => {
+            return { ...extra, quantity: 0 };
+          }),
+        );
+      } catch (error) {
+        if (!api.isCancel(error)) {
+          throw error;
+        }
+      }
     }
 
     loadFood();
+
+    return () => {
+      source.cancel();
+    };
+  }, [routeParams]);
+
+  useEffect(() => {
+    const source = api.CancelToken.source();
+
+    async function loadFavorite(): Promise<void> {
+      try {
+        const { id } = routeParams;
+
+        const favorite = await api.get<Food[]>(`favorites`, {
+          params: { id },
+          cancelToken: source.token,
+        });
+
+        if (favorite.data.length) {
+          setIsFavorite(true);
+        }
+      } catch (error) {
+        if (!api.isCancel(error)) {
+          throw error;
+        }
+      }
+    }
+
+    loadFavorite();
+
+    return () => {
+      source.cancel();
+    };
   }, [routeParams]);
 
   function handleIncrementExtra(id: number): void {
-    // Increment extra quantity
+    const newExtras = extras.map(item => {
+      return item.id !== id ? item : { ...item, quantity: item.quantity + 1 };
+    });
+
+    setExtras(newExtras);
   }
 
   function handleDecrementExtra(id: number): void {
-    // Decrement extra quantity
+    const newExtras = extras.map(item => {
+      return item.id !== id
+        ? item
+        : {
+            ...item,
+            quantity: item.quantity !== 0 ? item.quantity - 1 : 0,
+          };
+    });
+
+    setExtras(newExtras);
   }
 
   function handleIncrementFood(): void {
-    // Increment food quantity
+    setFoodQuantity(foodQuantity + 1);
   }
 
   function handleDecrementFood(): void {
-    // Decrement food quantity
+    setFoodQuantity(foodQuantity !== 1 ? foodQuantity - 1 : 1);
   }
 
-  const toggleFavorite = useCallback(() => {
-    // Toggle if food is favorite or not
-  }, [isFavorite, food]);
+  const toggleFavorite = useCallback(async () => {
+    const source = api.CancelToken.source();
+    const newIsFavorite = !isFavorite;
+
+    try {
+      const { id } = routeParams;
+
+      if (newIsFavorite) {
+        const {
+          name,
+          description,
+          price,
+          category,
+          image_url,
+          thumbnail_url,
+        } = food;
+
+        // const test: Omit<Food, 'formattedPrice' | 'extras'> = food;
+
+        // console.log(test);
+
+        await api.post<Food>(
+          'favorites',
+          {
+            id,
+            name,
+            description,
+            price,
+            category,
+            image_url,
+            thumbnail_url,
+          },
+          {
+            cancelToken: source.token,
+          },
+        );
+      } else {
+        await api.delete(`favorites/${id}`, {
+          cancelToken: source.token,
+        });
+      }
+
+      setIsFavorite(newIsFavorite);
+    } catch (error) {
+      if (!api.isCancel(error)) {
+        throw error;
+      }
+    }
+
+    return () => {
+      source.cancel();
+    };
+  }, [isFavorite, food, routeParams]);
 
   const cartTotal = useMemo(() => {
-    // Calculate cartTotal
+    const extraTotal = extras.reduce((accumulator, extra) => {
+      const newValue = accumulator + extra.value * extra.quantity;
+      return newValue;
+    }, 0);
+
+    const total = (food.price + extraTotal) * foodQuantity;
+
+    return formatValue(total || 0);
   }, [extras, food, foodQuantity]);
 
   async function handleFinishOrder(): Promise<void> {
-    // Finish the order and save on the API
+    const source = api.CancelToken.source();
+
+    try {
+      const {
+        id: product_id,
+        name,
+        description,
+        price,
+        category,
+        thumbnail_url,
+      } = food;
+
+      await api.post<Food[]>(
+        'orders',
+        {
+          product_id,
+          name,
+          description,
+          price,
+          category,
+          thumbnail_url,
+          extras,
+        },
+        {
+          cancelToken: source.token,
+        },
+      );
+
+      setIsMessageVisisble(true);
+    } catch (error) {
+      if (!api.isCancel(error)) {
+        throw error;
+      }
+    }
   }
 
   // Calculate the correct icon name
@@ -112,6 +277,14 @@ const FoodDetails: React.FC = () => {
     () => (isFavorite ? 'favorite' : 'favorite-border'),
     [isFavorite],
   );
+
+  const onOverlayTimeout = useCallback(() => {
+    navigation.goBack();
+  }, [navigation]);
+
+  const onOverlayClose = useCallback(() => {
+    navigation.goBack();
+  }, [navigation]);
 
   useLayoutEffect(() => {
     // Add the favorite icon on the right of the header bar
@@ -130,7 +303,6 @@ const FoodDetails: React.FC = () => {
   return (
     <Container>
       <Header />
-
       <ScrollContainer>
         <FoodsContainer>
           <Food>
@@ -209,6 +381,14 @@ const FoodDetails: React.FC = () => {
           </FinishOrderButton>
         </TotalContainer>
       </ScrollContainer>
+      <OverlayMessage
+        isVisible={isMessageVisisble}
+        icon="thumbs-up"
+        iconColor="#39B100"
+        message="Pedido confirmado!"
+        onTimeout={onOverlayTimeout}
+        onClose={onOverlayClose}
+      />
     </Container>
   );
 };

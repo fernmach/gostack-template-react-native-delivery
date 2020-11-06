@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Image } from 'react-native';
+import { Image, Alert } from 'react-native';
 
 import api from '../../services/api';
 import formatValue from '../../utils/formatValue';
@@ -31,11 +31,31 @@ const Orders: React.FC = () => {
   const [orders, setOrders] = useState<Food[]>([]);
 
   useEffect(() => {
+    const source = api.CancelToken.source();
+
     async function loadOrders(): Promise<void> {
-      // Load orders from API
+      try {
+        const response = await api.get<Food[]>('orders', {
+          cancelToken: source.token,
+        });
+
+        const items = response.data.map(item => {
+          return { ...item, formattedPrice: formatValue(item.price) };
+        });
+
+        setOrders(items);
+      } catch (error) {
+        if (!api.isCancel(error)) {
+          throw error;
+        }
+      }
     }
 
     loadOrders();
+
+    return () => {
+      source.cancel();
+    };
   }, []);
 
   return (

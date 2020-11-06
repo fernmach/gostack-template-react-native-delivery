@@ -13,7 +13,7 @@ const App: React.FC = () => {
         barStyle="light-content"
         backgroundColor="transparent"
         translucent
-      />
+        />
       <Routes />
     </View>
   );

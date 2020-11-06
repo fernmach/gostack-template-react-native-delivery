@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Image, ScrollView } from 'react-native';
+import { Image, ScrollView, Alert } from 'react-native';
 
 import Icon from 'react-native-vector-icons/Feather';
 import { useNavigation } from '@react-navigation/native';
@@ -54,27 +54,74 @@ const Dashboard: React.FC = () => {
   const navigation = useNavigation();
 
   async function handleNavigate(id: number): Promise<void> {
-    // Navigate do ProductDetails page
+    navigation.navigate('FoodDetails', { id });
   }
 
   useEffect(() => {
+    const source = api.CancelToken.source();
+
     async function loadFoods(): Promise<void> {
-      // Load Foods from API
+      try {
+        const response = await api.get<Food[]>('foods', {
+          params: {
+            category_like: selectedCategory,
+            name_like: searchValue,
+          },
+          cancelToken: source.token,
+        });
+
+        const items = response.data.map(dataItem => {
+          return {
+            ...dataItem,
+            formattedPrice: formatValue(dataItem.price),
+          };
+        });
+
+        setFoods(items);
+      } catch (error) {
+        if (!api.isCancel(error)) {
+          throw error;
+        }
+      }
     }
 
     loadFoods();
-  }, [selectedCategory, searchValue]);
+
+    return () => {
+      source.cancel();
+    };
+  }, [selectedCategory, searchValue, setFoods]);
 
   useEffect(() => {
+    const source = api.CancelToken.source();
+
     async function loadCategories(): Promise<void> {
-      // Load categories from API
+      try {
+        const response = await api.get<Category[]>('categories', {
+          cancelToken: source.token,
+        });
+
+        setCategories(response.data);
+      } catch (error) {
+        if (!api.isCancel(error)) {
+          throw error;
+        }
+      }
     }
 
     loadCategories();
+
+    return () => {
+      source.cancel();
+    };
   }, []);
 
   function handleSelectCategory(id: number): void {
-    // Select / deselect category
+    if (selectedCategory === id) {
+      setSelectedCategory(undefined);
+    } else {
+      setSelectedCategory(id);
+    }
   }
 
   return (

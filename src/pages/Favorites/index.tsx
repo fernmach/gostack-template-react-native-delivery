@@ -31,11 +31,31 @@ const Favorites: React.FC = () => {
   const [favorites, setFavorites] = useState<Food[]>([]);
 
   useEffect(() => {
+    const source = api.CancelToken.source();
+
     async function loadFavorites(): Promise<void> {
-      // Load favorite foods from api
+      try {
+        const response = await api.get<Food[]>('favorites', {
+          cancelToken: source.token,
+        });
+
+        const items = response.data.map(item => {
+          return { ...item, formattedPrice: formatValue(item.price) };
+        });
+
+        setFavorites(items);
+      } catch (error) {
+        if (!api.isCancel(error)) {
+          throw error;
+        }
+      }
     }
 
     loadFavorites();
+
+    return () => {
+      source.cancel();
+    };
   }, []);
 
   return (
